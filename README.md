@@ -1,356 +1,290 @@
-# Enhanced Flex File Monitor
+# Enhanced Flex Monitor
 
-![New Relic Hackathon](https://img.shields.io/badge/New%20Relic-Hackathon-brightgreen)
-![Go Version](https://img.shields.io/badge/Go-1.19+-blue)
-![License](https://img.shields.io/badge/license-MIT-green)
+> **Solving the Critical Data Freshness Gap in New Relic Flex**
 
-A production-ready Enhanced Flex File Monitor built for the New Relic Hackathon that addresses **nri-flex issue #509** about file staleness detection. This solution provides intelligent file monitoring with staleness detection, delivering **10-20% performance improvements** through selective processing.
+## The Missing Functionality
 
-## 🎯 Hackathon Goals
+> *"I have a file on disk which gets written to every 30 seconds. I would like to have nri-flex skip sampling from the file if it hasn't been modified within a configurable time. This is to prevent potentially inaccurate data from being sampled if, say, the program writing the file crashes."*
 
-This project directly addresses [nri-flex issue #509](https://github.com/newrelic/nri-flex/issues/509) by providing:
+This is inspired by [Option to skip sample collection if file write time is too old](https://github.com/newrelic/nri-flex/issues/509)
 
-- **File Staleness Detection**: Intelligent detection of outdated files to avoid unnecessary processing
-- **Performance Optimization**: 10-20% improvement through selective file processing
-- **Community Impact**: Solving a real problem faced by the New Relic community
-- **Production Ready**: Comprehensive error handling, monitoring, and alerting
+**This functionality doesn't exist in New Relic Flex today.**
 
-## 🚀 Quick Start
+### The Real-World Problem
+- **File-based monitoring** with nri-flex collecting data every 30 seconds
+- **Source application crashes** but file remains on disk with stale data  
+- **nri-flex continues sampling** outdated information indefinitely
+- **False metrics** lead to incorrect dashboards and poor business decisions
+
+Enhanced Flex Monitor fills this critical gap by providing intelligent staleness detection that prevents ingestion of outdated data before it reaches New Relic.
+
+---
+
+**Production-ready API staleness detection for New Relic observability pipelines**
+
+A production-ready solution that monitors API endpoints and files for data staleness, preventing inaccurate metrics from being ingested when source systems become unresponsive or return outdated information.
+
+## Key Features
+
+- **Staleness Detection**: Monitors Last-Modified headers and timestamps to detect stale data
+- **Configurable Thresholds**: Set custom staleness limits per API/endpoint  
+- **Flexible Behaviors**: Skip, alert, or continue processing when staleness is detected
+- **New Relic Integration**: Native integration with New Relic Flex for seamless data collection
+- **Real-time Monitoring**: Live dashboards and alerting for data freshness status
+- **Production Ready**: Built with reliability, performance, and observability in mind
+
+## Architecture
+
+Enhanced Flex Monitor works in conjunction with New Relic Flex to provide comprehensive data freshness monitoring:
+
+```
+┌─────────────────────┐    ┌─────────────────────┐    ┌─────────────────────┐
+│   Enhanced Flex     │    │    New Relic        │    │    New Relic        │
+│     Monitor         │────│       Flex          │────│     Platform        │
+│                     │    │                     │    │                     │
+│ • Staleness checks  │    │ • Data collection   │    │ • Metrics storage   │
+│ • API monitoring    │    │ • Data transformation│    │ • Dashboards        │
+│ • Alert generation  │    │ • Scheduled execution│    │ • Alerting          │
+│ • Data validation   │    │ • Error handling    │    │ • Analytics         │
+└─────────────────────┘    └─────────────────────┘    └─────────────────────┘
+```
+
+## New Relic Flex Integration
+
+Enhanced Flex Monitor integrates with New Relic Flex through configuration-driven data collection:
+
+### Flex Configuration (`configs/flex-integration.yml`)
+
+```yaml
+integrations:
+  - name: nri-flex
+    interval: 30s
+    config:
+      name: enhanced-flex-monitor
+      apis:
+        - name: staleness_metrics
+          url: http://localhost:8080/api/staleness/status
+          custom_attributes:
+            service: enhanced-flex-monitor
+            
+        - name: application_logs  
+          file: /var/log/enhanced-flex-monitor.log
+          split_by: \n
+          jq: 'select(.level == "INFO")'
+```
+
+### Data Flow
+
+1. **Enhanced Flex Monitor** runs staleness checks and exposes metrics via HTTP endpoints
+2. **New Relic Flex** collects data every 30 seconds from these endpoints  
+3. **Data transformation** occurs using JQ filters to structure metrics
+4. **New Relic Platform** ingests the processed staleness metrics and logs
+5. **Dashboards and alerts** provide visibility into data freshness status
+
+## Quick Start
 
 ### Prerequisites
 
-- Go 1.19 or later
-- New Relic account with API key
-- Access to data sources (HTTP endpoints, files)
+- Go 1.19+
+- New Relic account with Ingest License Key
+- New Relic Infrastructure Agent (for Flex integration)
 
 ### Installation
 
-```bash
-# Clone the repository
-git clone https://github.com/satyampsoni/new-relic-hackathon-o11y.git
-cd new-relic-hackathon-o11y
+1. **Clone and build**
+   ```bash
+   git clone https://github.com/satyampsoni/new-relic-hackathon-o11y.git
+   cd new-relic-hackathon-o11y
+   make build
+   ```
 
-# Install dependencies
-go mod tidy
+2. **Configure environment**
+   ```bash
+   export NEW_RELIC_API_KEY="your_ingest_license_key"
+   export NEW_RELIC_ACCOUNT_ID="your_account_id"
+   ```
 
-# Build the application
-go build -o enhanced-flex-monitor
+3. **Run the monitor**
+   ```bash
+   ./enhanced-flex-monitor -config config.yml
+   ```
 
-# Set up environment variables
-export NEW_RELIC_API_KEY="your-api-key"
-export NEW_RELIC_ACCOUNT_ID="your-account-id"
+## Configuration
 
-# Run with example configuration
-./enhanced-flex-monitor -config config.yml
-```
-
-### Docker Quick Start
-
-```bash
-# Build Docker image
-docker build -t enhanced-flex-monitor .
-
-# Run with configuration
-docker run -v $(pwd)/config.yml:/app/config.yml \
-  -e NEW_RELIC_API_KEY="your-api-key" \
-  -e NEW_RELIC_ACCOUNT_ID="your-account-id" \
-  enhanced-flex-monitor
-```
-
-## 🔧 Configuration
-
-### Basic Configuration
-
-Create a `config.yml` file:
+### Basic Configuration (`config.yml`)
 
 ```yaml
 global:
   name: "enhanced-flex-monitor"
   interval: 30s
   log_level: "info"
-  enable_metrics: true
-  enable_alerts: true
+  worker_count: 4
 
 newrelic:
   api_key: "${NEW_RELIC_API_KEY}"
   account_id: "${NEW_RELIC_ACCOUNT_ID}"
-  region: "US"
+  region: "US"  # or "EU"
 
-apis:
-  - name: "service-metrics"
-    url: "https://api.example.com/metrics.json"
-    format: "json"
-    event_type: "ServiceMetrics"
-    enabled: true
-    staleness:
-      enabled: true
-      threshold: 5m
-      behavior: "skip"  # skip, alert, continue
-```
-
-### File Staleness Detection
-
-The core feature that addresses nri-flex issue #509:
-
-```yaml
-staleness:
-  enabled: true           # Enable staleness detection
-  threshold: 5m          # Consider stale if older than 5 minutes
-  behavior: "skip"       # skip, alert, continue
-  check_url: "..."       # Optional: different URL for staleness check
-```
-
-**Behaviors:**
-- `skip`: Skip processing stale files (performance optimization)
-- `alert`: Generate alert but continue processing (monitoring)
-- `continue`: Always process, just log staleness (data completeness)
-
-### Advanced Configuration Examples
-
-#### High-Performance Setup
-```yaml
-global:
-  worker_count: 8  # Increase concurrent processing
-  interval: 15s    # More frequent checks
-
-apis:
-  - name: "real-time-data"
-    staleness:
-      threshold: 2m    # Strict staleness
-      behavior: "skip" # Skip for performance
-```
-
-#### Monitoring-Focused Setup
-```yaml
 alerts:
   channels:
-    - name: "slack-alerts"
-      type: "slack"
+    - name: "log-alerts"
+      type: "log"
       enabled: true
-      settings:
-        webhook_url: "${SLACK_WEBHOOK_URL}"
 
+apis:
+  - name: "user-service"
+    url: "https://api.example.com/users"
+    format: "json"
+    event_type: "UserServiceMetrics"
+    staleness:
+      enabled: true
+      threshold: "10m"
+      behavior: "alert"  # skip, alert, continue
+```
+
+### Staleness Behaviors
+
+- **`skip`**: Don't process stale data (recommended for critical metrics)
+- **`alert`**: Process but generate alerts for stale data  
+- **`continue`**: Process all data but log staleness warnings
+
+## Staleness Detection
+
+### Detection Methods
+
+- **Last-Modified Headers**: Analyzes HTTP response headers
+- **File Timestamps**: Monitors file modification times
+- **Response Patterns**: Detects cached or repeated responses
+
+### Behavior Options
+
+- **`skip`**: Don't process stale data (recommended for critical metrics)
+- **`alert`**: Process data but generate alerts for staleness
+- **`continue`**: Process all data with staleness warnings
+
+### Threshold Configuration
+
+```yaml
 apis:
   - name: "critical-service"
     staleness:
-      threshold: 10m
-      behavior: "alert"  # Alert on staleness
+      threshold: "5m"    # 5 minutes
+      behavior: "skip"   # Stop processing stale data
+      
+  - name: "monitoring-service"  
+    staleness:
+      threshold: "1h"    # 1 hour
+      behavior: "alert"  # Alert but continue processing
 ```
 
-## 📊 Performance Benefits
-
-### Benchmarks
-
-| Scenario | Without Staleness | With Staleness | Improvement |
-|----------|------------------|-----------------|-------------|
-| Mixed file ages | 100% processing | 80% processing | **20% faster** |
-| Mostly fresh files | 100% processing | 95% processing | **5% faster** |
-| Mostly stale files | 100% processing | 70% processing | **30% faster** |
-
-### Resource Optimization
-
-- **Network Calls**: Reduced by up to 30% through HEAD request optimization
-- **CPU Usage**: Lower processing overhead for stale files
-- **Memory**: Efficient batch processing and streaming
-- **Data Quality**: Better insights through staleness metrics
-
-## 🛠️ Command Line Usage
-
-```bash
-# Standard operation
-./enhanced-flex-monitor -config config.yml
-
-# Configuration validation
-./enhanced-flex-monitor -config config.yml -validate
-
-# Test alert channels
-./enhanced-flex-monitor -config config.yml -test-alerts
-
-# Health check
-./enhanced-flex-monitor -health
-
-# Override log level
-./enhanced-flex-monitor -config config.yml -log-level debug
-
-# Show version
-./enhanced-flex-monitor -version
-```
-
-## 📈 Monitoring & Observability
-
-### New Relic Dashboards
-
-The monitor sends comprehensive metrics to New Relic:
-
-```sql
--- File staleness metrics
-SELECT average(flex.staleness.file_age) FROM Metric 
-WHERE metricName = 'flex.staleness.file_age' 
-FACET api.name TIMESERIES
-
--- Processing performance
-SELECT average(flex.processing.duration) FROM Metric 
-WHERE metricName = 'flex.processing.duration'
-FACET is_stale TIMESERIES
-
--- Error rates
-SELECT count(*) FROM Metric 
-WHERE metricName = 'flex.processing.status' 
-AND value = 0 FACET api.name TIMESERIES
-```
+## Monitoring & Dashboards  
 
 ### Key Metrics
 
 | Metric | Description | Type |
 |--------|-------------|------|
-| `flex.staleness.file_age` | Age of file in seconds | Gauge |
-| `flex.staleness.ratio` | File age / threshold ratio | Gauge |
-| `flex.processing.duration` | Processing time per API | Gauge |
-| `flex.processing.records` | Records processed | Count |
-| `flex.cycle.stale_files` | Stale files per cycle | Count |
+| `staleness_check_count` | Total staleness checks performed | Counter |
+| `stale_data_detected` | APIs returning stale data | Gauge |
+| `api_response_time_ms` | API response time in milliseconds | Gauge |
+| `staleness_threshold_ratio` | Data age vs threshold ratio | Gauge |
 
-### Alert Templates
+### Sample NRQL Queries
+
+```sql
+-- Overall staleness status
+SELECT count(*) as 'Total APIs', 
+       filter(count(*), WHERE is_stale = true) as 'Stale APIs'
+FROM StalenessMetrics SINCE 30 minutes ago
+
+-- Response time by staleness status  
+SELECT average(response_time_ms) as 'Avg Response Time'
+FROM StalenessMetrics 
+FACET if(is_stale, 'Stale', 'Fresh') 
+SINCE 1 hour ago
+
+-- Staleness timeline
+SELECT count(*) FROM StalenessMetrics 
+FACET is_stale 
+SINCE 4 hours ago TIMESERIES 10 minutes
+```
+## Use Cases
+
+### Production Monitoring
+Monitor critical APIs to ensure dashboards display accurate, real-time data rather than stale cached responses.
+
+### Data Quality Assurance  
+Validate data freshness before ingestion to maintain metric accuracy and prevent false alerting.
+
+### SLA Compliance
+Track and report on data freshness SLAs, ensuring upstream services meet contractual obligations.
+
+### Dependency Monitoring
+Detect when external APIs or services start returning outdated information due to failures.
+
+## Development
+
+### Project Structure
+
+```
+├── main.go                     # Application entry point
+├── config.yml                  # Main configuration
+├── configs/
+│   ├── flex-integration.yml    # New Relic Flex configuration
+│   └── README.md              # Flex setup guide
+├── internal/
+│   ├── config/                # Configuration management
+│   ├── staleness/             # Staleness detection logic
+│   ├── metrics/               # New Relic metrics collection
+│   ├── alerts/                # Alert management
+│   ├── processor/             # Data processing
+│   └── api/                   # HTTP API endpoints
+├── Makefile                   # Build automation
+└── Dockerfile                 # Container support
+```
+
+### Building
+
+```bash
+# Development build
+make build
+
+# Run tests
+make test
+
+# Docker build
+make docker-build
+docker run -e NEW_RELIC_API_KEY=your_key enhanced-flex-monitor
+
+# Clean build artifacts
+make clean
+```
+
+### Configuration Options
 
 ```yaml
+global:
+  interval: 30s              # Monitoring frequency
+  log_level: "info"          # Logging verbosity
+  worker_count: 4            # Concurrent workers
+  enable_metrics: true       # Metrics collection
+  enable_alerts: true        # Alert generation
+
+newrelic:
+  region: "US"               # US or EU
+  timeout: 30s               # API timeout
+  
 alerts:
   channels:
-    - name: "ops-team"
-      type: "slack"
+    - name: "slack-ops"
+      type: "webhook"
       enabled: true
       settings:
-        webhook_url: "${SLACK_OPS_WEBHOOK}"
+        webhook_url: "${SLACK_WEBHOOK_URL}"
 ```
 
-## 🏗️ Architecture
 
-### Component Overview
-
-```
-┌─────────────────┐    ┌──────────────────┐    ┌─────────────────┐
-│   Main App      │    │ File Processor   │    │ New Relic API   │
-│                 │────▶│                  │────▶│                 │
-│ • Config        │    │ • JSON/CSV       │    │ • Events        │
-│ • Scheduling    │    │ • JQ Transform   │    │ • Metrics       │
-│ • Orchestration │    │ • Staleness      │    │                 │
-└─────────────────┘    └──────────────────┘    └─────────────────┘
-         │                       │
-         ▼                       ▼
-┌─────────────────┐    ┌──────────────────┐
-│ Alert Manager   │    │ Staleness        │
-│                 │    │ Detector         │
-│ • Webhook       │    │                  │
-│ • Slack         │    │ • HTTP HEAD      │
-│ • Log           │    │ • Timestamp      │
-└─────────────────┘    └──────────────────┘
-```
-
-### Key Components
-
-1. **Configuration System**: YAML-based with validation and defaults
-2. **Staleness Detector**: HTTP HEAD requests for file modification times
-3. **File Processor**: JSON/CSV processing with JQ transformations
-4. **Metrics Collector**: New Relic Events and Metrics API integration
-5. **Alert Manager**: Multi-channel alerting (Webhook, Slack, Log)
-
-## 🔍 Troubleshooting
-
-### Common Issues
-
-#### Configuration Errors
-```bash
-# Validate configuration
-./enhanced-flex-monitor -validate
-
-# Check logs for validation errors
-./enhanced-flex-monitor -log-level debug
-```
-
-#### New Relic Connection Issues
-```bash
-# Test New Relic connectivity
-./enhanced-flex-monitor -health
-
-# Check API key and region settings
-export NEW_RELIC_API_KEY="your-key"
-```
-
-#### Staleness Detection Issues
-```bash
-# Debug staleness detection
-./enhanced-flex-monitor -log-level debug
-
-# Check URL accessibility
-curl -I https://your-api-endpoint.com/data.json
-```
-
-### Performance Tuning
-
-#### High-Volume Scenarios
-```yaml
-global:
-  worker_count: 16  # Increase workers
-  interval: 60s     # Reduce frequency
-
-apis:
-  - staleness:
-      threshold: 30m  # More lenient thresholds
-      behavior: "skip"
-```
-
-#### Low-Latency Requirements
-```yaml
-global:
-  interval: 10s  # More frequent checks
-
-apis:
-  - staleness:
-      threshold: 1m   # Strict freshness
-      behavior: "skip"
-```
-
-## 🤝 Community Impact
-
-### Addressing nri-flex Issue #509
-
-This solution directly solves the community-requested feature for file staleness detection:
-
-- **Problem**: nri-flex processes files without checking if they're updated
-- **Solution**: Intelligent staleness detection with configurable behaviors
-- **Impact**: 10-20% performance improvement across the ecosystem
-
-### Community Benefits
-
-1. **Performance**: Significant reduction in unnecessary processing
-2. **Reliability**: Better data quality through staleness monitoring
-3. **Flexibility**: Multiple staleness behaviors for different use cases
-4. **Observability**: Comprehensive metrics and alerting
-
-## 🚀 Hackathon Innovation
-
-### Technical Innovation
-
-- **Smart HTTP HEAD**: Efficient file freshness checking
-- **Configurable Behaviors**: Skip, alert, or continue based on staleness
-- **Performance Metrics**: Real-time staleness ratio monitoring
-- **Multi-format Support**: JSON and CSV with JQ transformations
-
-### Business Value
-
-- **Cost Reduction**: Lower compute and network costs
-- **Better SLAs**: Improved application performance
-- **Data Quality**: Fresher, more relevant data in New Relic
-- **Operational Efficiency**: Reduced alert fatigue
-
-## 📜 License
-
-MIT License - see [LICENSE](LICENSE) file for details.
-
-## 🏆 Hackathon Submission
-
-Built for the New Relic Hackathon 2024 to address real community needs and improve the observability ecosystem.
-
-**Key Achievement**: Solving nri-flex issue #509 with production-ready code that delivers measurable performance improvements.
+- **New Relic Docs**: [Flex Integration Guide](https://docs.newrelic.com/docs/infrastructure/host-integrations/host-integrations-list/flex-integration-tool-build-your-own-integration/)
 
 ---
 
-*Made with ❤️ for the New Relic Community*
+Built with :love for New Relic hackathon

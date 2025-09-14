@@ -19,12 +19,12 @@ type Config struct {
 
 // GlobalConfig contains global application settings
 type GlobalConfig struct {
-	Name           string        `yaml:"name"`
-	Interval       time.Duration `yaml:"interval"`
-	LogLevel       string        `yaml:"log_level"`
-	EnableMetrics  bool          `yaml:"enable_metrics"`
-	EnableAlerts   bool          `yaml:"enable_alerts"`
-	WorkerCount    int           `yaml:"worker_count"`
+	Name          string        `yaml:"name"`
+	Interval      time.Duration `yaml:"interval"`
+	LogLevel      string        `yaml:"log_level"`
+	EnableMetrics bool          `yaml:"enable_metrics"`
+	EnableAlerts  bool          `yaml:"enable_alerts"`
+	WorkerCount   int           `yaml:"worker_count"`
 }
 
 // NewRelicConfig contains New Relic integration settings
@@ -53,6 +53,7 @@ type AlertChannel struct {
 type APIConfig struct {
 	Name        string            `yaml:"name"`
 	URL         string            `yaml:"url"`
+	FallbackURL string            `yaml:"fallback_url"`
 	Format      string            `yaml:"format"`
 	JQ          string            `yaml:"jq"`
 	Attributes  map[string]string `yaml:"attributes"`

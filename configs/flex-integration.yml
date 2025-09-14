@@ -1,0 +1,67 @@
+integrations:
+  - name: nri-flex
+    interval: 30s
+    config:
+      name: enhanced-flex-monitor
+      global:
+        base_url: http://localhost:8080
+        headers:
+          accept: application/json
+        timeout: 10s
+      apis:
+        - name: staleness_metrics
+          url: /api/staleness/status
+          custom_attributes:
+            service: enhanced-flex-monitor
+            metric_type: staleness
+          jq: '.[] | {api_name: .api_name, is_stale: .is_stale, file_age_minutes: .file_age_minutes, threshold_minutes: .threshold_minutes, behavior: .behavior, last_check: .last_check}'
+          
+        - name: api_health
+          url: /api/health
+          custom_attributes:
+            service: enhanced-flex-monitor  
+            metric_type: health_check
+          jq: '.apis[] | {name: .name, status: .status, response_time_ms: .response_time_ms, last_check: .last_check}'
+            
+        # Monitor alert metrics
+        - name: alert_metrics
+          url: /api/alerts/summary
+          custom_attributes:
+            service: enhanced-flex-monitor
+            metric_type: alerts
+            component: alert_manager
+            environment: production
+          jq: '{total_alerts: .total_alerts, alerts_last_hour: .alerts_last_hour, critical_alerts: .critical_alerts, warning_alerts: .warning_alerts}'
+            
+        # Process application logs directly
+        - name: log_processor
+          file: /Users/satyampsoni/new-relic-o11y/new-relic-hackathon-o11y/test_data/server.log
+          custom_attributes:
+            service: enhanced-flex-monitor
+            data_type: application_logs
+            log_source: server_log
+            environment: production
+          split: horizontal
+          split_by: \n
+          regex_match: true
+          jq: 'select(length > 0) | try fromjson catch empty | select(. != null and .timestamp != null) | {timestamp: .timestamp, level: .level, message: .message, cpu: (.cpu // 0), source: (.source // "server"), api_name: (.api_name // "unknown")}'
+          
+        # Monitor system metrics
+        - name: system_metrics
+          url: /api/system/stats
+          custom_attributes:
+            service: enhanced-flex-monitor
+            metric_type: system
+            component: system_monitor
+            environment: production
+          jq: '{cpu_usage: .cpu_usage, memory_usage: .memory_usage, disk_usage: .disk_usage, goroutines: .goroutines, uptime_seconds: .uptime_seconds}'
+
+        # Monitor API response times and success rates
+        - name: performance_metrics
+          url: /api/performance/summary
+          custom_attributes:
+            service: enhanced-flex-monitor
+            metric_type: performance
+            component: performance_monitor
+            environment: production
+          jq: '.apis[] | {api_name: .name, avg_response_time_ms: .avg_response_time_ms, success_rate: .success_rate, total_requests: .total_requests, error_count: .error_count}'

@@ -6,6 +6,10 @@ enhanced-flex-monitor.exe
 dist/
 build/
 
+# Configuration
+.env
+config.local.yml
+
 # Dependencies
 vendor/
 

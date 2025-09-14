@@ -3,6 +3,8 @@ package staleness
 import (
 	"fmt"
 	"net/http"
+	"net/url"
+	"strings"
 	"time"
 
 	"github.com/sirupsen/logrus"
@@ -37,17 +39,24 @@ type Result struct {
 }
 
 // CheckStaleness checks if a file is stale based on its last modification time
-func (d *Detector) CheckStaleness(url string, threshold time.Duration, behavior string) *Result {
+func (d *Detector) CheckStaleness(urlStr string, threshold time.Duration, behavior string) *Result {
 	result := &Result{
 		Threshold: threshold,
 		Behavior:  behavior,
 	}
 
+	// Validate URL before making request
+	if err := d.validateURL(urlStr); err != nil {
+		result.Error = fmt.Errorf("invalid URL: %w", err)
+		d.logger.WithError(err).WithField("url", urlStr).Error("URL validation failed")
+		return result
+	}
+
 	// Get the last modified time from HTTP headers
-	lastModified, err := d.getLastModified(url)
+	lastModified, err := d.getLastModified(urlStr)
 	if err != nil {
 		result.Error = fmt.Errorf("failed to get last modified time: %w", err)
-		d.logger.WithError(err).WithField("url", url).Error("Failed to check file staleness")
+		d.logger.WithError(err).WithField("url", urlStr).Error("Failed to check file staleness")
 		return result
 	}
 
@@ -57,7 +66,7 @@ func (d *Detector) CheckStaleness(url string, threshold time.Duration, behavior 
 
 	if result.IsStale {
 		d.logger.WithFields(logrus.Fields{
-			"url":           url,
+			"url":           urlStr,
 			"file_age":      result.FileAge,
 			"threshold":     threshold,
 			"last_modified": lastModified,
@@ -67,16 +76,16 @@ func (d *Detector) CheckStaleness(url string, threshold time.Duration, behavior 
 		switch behavior {
 		case "skip":
 			result.ShouldSkip = true
-			d.logger.WithField("url", url).Info("Skipping stale file processing")
+			d.logger.WithField("url", urlStr).Info("Skipping stale file processing")
 		case "alert":
 			result.ShouldAlert = true
-			d.logger.WithField("url", url).Info("Will generate alert for stale file")
+			d.logger.WithField("url", urlStr).Info("Will generate alert for stale file")
 		case "continue":
-			d.logger.WithField("url", url).Info("Continuing to process stale file")
+			d.logger.WithField("url", urlStr).Info("Continuing to process stale file")
 		}
 	} else {
 		d.logger.WithFields(logrus.Fields{
-			"url":           url,
+			"url":           urlStr,
 			"file_age":      result.FileAge,
 			"threshold":     threshold,
 			"last_modified": lastModified,
@@ -179,6 +188,32 @@ type StalenessCheck struct {
 type indexedResult struct {
 	Index  int
 	Result Result
+}
+
+// validateURL validates the URL format and scheme
+func (d *Detector) validateURL(urlStr string) error {
+	if strings.TrimSpace(urlStr) == "" {
+		return fmt.Errorf("URL cannot be empty")
+	}
+
+	parsedURL, err := url.Parse(urlStr)
+	if err != nil {
+		return fmt.Errorf("invalid URL format: %w", err)
+	}
+
+	if parsedURL.Scheme == "" {
+		return fmt.Errorf("URL must include a scheme (http or https)")
+	}
+
+	if parsedURL.Scheme != "http" && parsedURL.Scheme != "https" {
+		return fmt.Errorf("unsupported URL scheme '%s', only http and https are supported", parsedURL.Scheme)
+	}
+
+	if parsedURL.Host == "" {
+		return fmt.Errorf("URL must include a host")
+	}
+
+	return nil
 }
 
 // GetMetrics returns performance metrics for the detector

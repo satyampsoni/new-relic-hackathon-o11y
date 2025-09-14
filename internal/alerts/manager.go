@@ -5,6 +5,8 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"net/url"
+	"strings"
 	"time"
 
 	"github.com/satyampsoni/new-relic-hackathon-o11y/internal/config"
@@ -31,14 +33,14 @@ func NewManager(channels []config.AlertChannel, logger *logrus.Logger) *Manager 
 
 // Alert represents an alert to be sent
 type Alert struct {
-	Type        string                 `json:"type"`
-	Severity    string                 `json:"severity"`
-	Title       string                 `json:"title"`
-	Message     string                 `json:"message"`
-	Source      string                 `json:"source"`
-	Timestamp   time.Time              `json:"timestamp"`
-	Metadata    map[string]interface{} `json:"metadata"`
-	Tags        []string               `json:"tags"`
+	Type      string                 `json:"type"`
+	Severity  string                 `json:"severity"`
+	Title     string                 `json:"title"`
+	Message   string                 `json:"message"`
+	Source    string                 `json:"source"`
+	Timestamp time.Time              `json:"timestamp"`
+	Metadata  map[string]interface{} `json:"metadata"`
+	Tags      []string               `json:"tags"`
 }
 
 // SendAlert sends an alert through all enabled channels
@@ -95,6 +97,11 @@ func (m *Manager) sendWebhook(alert Alert, channel config.AlertChannel) error {
 	webhookURL, ok := channel.Settings["url"]
 	if !ok {
 		return fmt.Errorf("webhook URL not configured for channel %s", channel.Name)
+	}
+
+	// Validate webhook URL
+	if err := m.validateWebhookURL(webhookURL); err != nil {
+		return fmt.Errorf("invalid webhook URL for channel %s: %w", channel.Name, err)
 	}
 
 	payload := map[string]interface{}{
@@ -155,15 +162,15 @@ func (m *Manager) sendSlack(alert Alert, channel config.AlertChannel) error {
 	}
 
 	slackPayload := map[string]interface{}{
-		"username":    "Enhanced Flex Monitor",
-		"icon_emoji":  ":warning:",
+		"username":   "Enhanced Flex Monitor",
+		"icon_emoji": ":warning:",
 		"attachments": []map[string]interface{}{
 			{
-				"color":      color,
-				"title":      alert.Title,
-				"text":       alert.Message,
-				"timestamp":  alert.Timestamp.Unix(),
-				"footer":     "Enhanced Flex Monitor",
+				"color":       color,
+				"title":       alert.Title,
+				"text":        alert.Message,
+				"timestamp":   alert.Timestamp.Unix(),
+				"footer":      "Enhanced Flex Monitor",
 				"footer_icon": ":chart_with_upwards_trend:",
 				"fields": []map[string]interface{}{
 					{
@@ -219,13 +226,13 @@ func (m *Manager) sendLog(alert Alert, channel config.AlertChannel) error {
 	}
 
 	logEntry := m.logger.WithFields(logrus.Fields{
-		"alert_type":  alert.Type,
-		"severity":    alert.Severity,
-		"source":      alert.Source,
-		"timestamp":   alert.Timestamp,
-		"metadata":    alert.Metadata,
-		"tags":        alert.Tags,
-		"channel":     channel.Name,
+		"alert_type": alert.Type,
+		"severity":   alert.Severity,
+		"source":     alert.Source,
+		"timestamp":  alert.Timestamp,
+		"metadata":   alert.Metadata,
+		"tags":       alert.Tags,
+		"channel":    channel.Name,
 	})
 
 	switch level {
@@ -324,4 +331,30 @@ func (m *Manager) TestChannels() error {
 	}
 
 	return m.SendAlert(testAlert)
+}
+
+// validateWebhookURL validates webhook URL format and scheme
+func (m *Manager) validateWebhookURL(webhookURL string) error {
+	if strings.TrimSpace(webhookURL) == "" {
+		return fmt.Errorf("webhook URL cannot be empty")
+	}
+
+	parsedURL, err := url.Parse(webhookURL)
+	if err != nil {
+		return fmt.Errorf("invalid webhook URL format: %w", err)
+	}
+
+	if parsedURL.Scheme == "" {
+		return fmt.Errorf("webhook URL must include a scheme (http or https)")
+	}
+
+	if parsedURL.Scheme != "http" && parsedURL.Scheme != "https" {
+		return fmt.Errorf("unsupported webhook URL scheme '%s', only http and https are supported", parsedURL.Scheme)
+	}
+
+	if parsedURL.Host == "" {
+		return fmt.Errorf("webhook URL must include a host")
+	}
+
+	return nil
 }

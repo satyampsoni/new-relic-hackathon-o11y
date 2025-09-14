@@ -20,19 +20,15 @@ import (
 
 const (
 	version = "1.0.0"
-	appName = "Enhanced Flex File Monitor"
+	appName = "Enhanced Flex Monitor"
 )
 
 var (
-	configPath     = flag.String("config", "config.yml", "Path to configuration file")
-	showVersion    = flag.Bool("version", false, "Show version information")
-	validateConfig = flag.Bool("validate", false, "Validate configuration and exit")
-	testAlerts     = flag.Bool("test-alerts", false, "Test alert channels and exit")
-	healthCheck    = flag.Bool("health", false, "Perform health check and exit")
-	logLevel       = flag.String("log-level", "", "Override log level (debug, info, warn, error)")
+	configPath  = flag.String("config", "config.yml", "Path to configuration file")
+	showVersion = flag.Bool("version", false, "Show version information")
+	logLevel    = flag.String("log-level", "", "Override log level")
 )
 
-// Application holds the main application state
 type Application struct {
 	config            *config.Config
 	logger            *logrus.Logger
@@ -50,72 +46,37 @@ func main() {
 
 	if *showVersion {
 		fmt.Printf("%s v%s\n", appName, version)
-		fmt.Printf("Built for New Relic Hackathon - File Staleness Detection (nri-flex issue #509)\n")
 		os.Exit(0)
 	}
-
-	// Initialize application
 	app, err := initializeApplication()
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Failed to initialize application: %v\n", err)
 		os.Exit(1)
 	}
 
-	// Handle special operations
-	if *validateConfig {
-		app.logger.Info("Configuration validation successful")
-		os.Exit(0)
-	}
-
-	if *testAlerts {
-		if err := app.testAlerts(); err != nil {
-			app.logger.WithError(err).Fatal("Alert test failed")
-		}
-		app.logger.Info("Alert test completed successfully")
-		os.Exit(0)
-	}
-
-	if *healthCheck {
-		if err := app.performHealthCheck(); err != nil {
-			app.logger.WithError(err).Fatal("Health check failed")
-		}
-		app.logger.Info("Health check completed successfully")
-		os.Exit(0)
-	}
-
-	// Start application
 	app.logger.WithFields(logrus.Fields{
-		"version":    version,
-		"config":     *configPath,
-		"apis":       len(app.config.APIs),
-		"log_level":  app.config.Global.LogLevel,
-		"interval":   app.config.Global.Interval,
-	}).Info("Starting Enhanced Flex File Monitor")
+		"version":  version,
+		"config":   *configPath,
+		"apis":     len(app.config.APIs),
+		"interval": app.config.Global.Interval,
+	}).Info("Starting Enhanced Flex Monitor")
 
-	// Setup graceful shutdown
 	app.setupGracefulShutdown()
-
-	// Start main processing loop
 	app.run()
-
-	app.logger.Info("Enhanced Flex File Monitor stopped")
+	app.logger.Info("Enhanced Flex Monitor stopped")
 }
 
-// initializeApplication sets up all application components
 func initializeApplication() (*Application, error) {
-	// Load configuration
 	cfg, err := config.LoadConfig(*configPath)
 	if err != nil {
 		return nil, fmt.Errorf("failed to load config: %w", err)
 	}
 
-	// Initialize logger
 	logger := logrus.New()
 	logger.SetFormatter(&logrus.JSONFormatter{
 		TimestampFormat: time.RFC3339,
 	})
 
-	// Override log level if specified
 	if *logLevel != "" {
 		cfg.Global.LogLevel = *logLevel
 	}
@@ -219,7 +180,7 @@ func (app *Application) processAPIs() {
 
 		if result.HasError && result.Error != nil {
 			errors = append(errors, result.Error)
-			
+
 			// Send error alert if alerts are enabled
 			if app.config.Global.EnableAlerts {
 				app.alertManager.SendErrorAlert(result.APIName, "processing", result.Error)
@@ -244,7 +205,7 @@ func (app *Application) processAPIs() {
 	// Send metrics if enabled
 	if app.config.Global.EnableMetrics {
 		app.sendCycleMetrics(duration, totalRecords, len(errors), staleCount)
-		
+
 		// Send batch to New Relic
 		if err := app.metricsCollector.SendBatch(); err != nil {
 			app.logger.WithError(err).Error("Failed to send metrics batch")
@@ -276,38 +237,6 @@ func (app *Application) sendCycleMetrics(duration time.Duration, recordCount, er
 	app.metricsCollector.AddMetric("flex.cycle.records", "count", float64(recordCount), attributes)
 	app.metricsCollector.AddMetric("flex.cycle.errors", "count", float64(errorCount), attributes)
 	app.metricsCollector.AddMetric("flex.cycle.stale_files", "count", float64(staleCount), attributes)
-}
-
-// testAlerts tests all configured alert channels
-func (app *Application) testAlerts() error {
-	app.logger.Info("Testing alert channels")
-	return app.alertManager.TestChannels()
-}
-
-// performHealthCheck performs a comprehensive health check
-func (app *Application) performHealthCheck() error {
-	app.logger.Info("Performing health check")
-
-	// Check New Relic connectivity
-	if err := app.metricsCollector.HealthCheck(); err != nil {
-		return fmt.Errorf("New Relic health check failed: %w", err)
-	}
-
-	// Check configuration
-	if len(app.config.GetEnabledAPIs()) == 0 {
-		return fmt.Errorf("no enabled APIs configured")
-	}
-
-	// Test staleness detector with a simple check
-	detector := staleness.NewDetector(app.logger)
-	testURL := "https://httpbin.org/get"
-	result := detector.CheckStaleness(testURL, 1*time.Hour, "continue")
-	if result.Error != nil {
-		app.logger.WithError(result.Error).Warn("Staleness detector test had issues, but continuing")
-	}
-
-	app.logger.Info("Health check passed")
-	return nil
 }
 
 // shutdown performs graceful shutdown
