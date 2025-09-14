@@ -1,0 +1,36 @@
+# Binaries
+enhanced-flex-monitor
+enhanced-flex-monitor.exe
+
+# Build artifacts
+dist/
+build/
+
+# Dependencies
+vendor/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Local config files
+config.local.yml
+.env
+
+# Logs
+*.log
+logs/
+
+# Test artifacts
+coverage.out
+*.test
+
+# Temporary files
+tmp/
+.tmp/
