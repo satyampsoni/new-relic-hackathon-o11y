@@ -27,9 +27,12 @@ A production-ready solution that monitors API endpoints and files for data stale
 ## Key Features
 
 - **Staleness Detection**: Monitors Last-Modified headers and timestamps to detect stale data
+- **HTTP Metrics Server**: Built-in HTTP server (port 8080) exposing comprehensive monitoring endpoints
 - **Configurable Thresholds**: Set custom staleness limits per API/endpoint  
 - **Flexible Behaviors**: Skip, alert, or continue processing when staleness is detected
 - **New Relic Integration**: Native integration with New Relic Flex for seamless data collection
+- **Environment Configuration**: Support for .env files with secure credential management
+- **Enhanced Logging**: Pretty console output with colored logs and startup banner
 - **Real-time Monitoring**: Live dashboards and alerting for data freshness status
 - **Production Ready**: Built with reliability, performance, and observability in mind
 
@@ -47,6 +50,33 @@ Enhanced Flex Monitor works in conjunction with New Relic Flex to provide compre
 │ • Alert generation  │    │ • Scheduled execution│    │ • Alerting          │
 │ • Data validation   │    │ • Error handling    │    │ • Analytics         │
 └─────────────────────┘    └─────────────────────┘    └─────────────────────┘
+```
+
+## HTTP Monitoring Endpoints
+
+Enhanced Flex Monitor provides a built-in HTTP server (port 8080) with comprehensive monitoring endpoints:
+
+| Endpoint | Description | Use Case |
+|----------|-------------|----------|
+| `/api/staleness/status` | Current staleness metrics for all APIs | New Relic Flex integration |
+| `/api/health` | API health status with response times | Service health monitoring |
+| `/api/alerts/summary` | Alert statistics and history | Alert management dashboard |
+| `/api/system/stats` | System performance (CPU, memory, goroutines) | Infrastructure monitoring |
+| `/api/performance/summary` | API performance metrics | Performance analysis |
+| `/api/config/validate` | Configuration validation status | Configuration verification |
+| `/api/test/generate-data` | Test data generation endpoint | Testing and debugging |
+
+### Example Response
+
+```bash
+# Check staleness status
+curl http://localhost:8080/api/staleness/status | jq
+
+# Monitor system health  
+curl http://localhost:8080/api/health | jq
+
+# View alert summary
+curl http://localhost:8080/api/alerts/summary | jq
 ```
 
 ## New Relic Flex Integration
@@ -67,10 +97,25 @@ integrations:
           custom_attributes:
             service: enhanced-flex-monitor
             
-        - name: application_logs  
-          file: /var/log/enhanced-flex-monitor.log
-          split_by: \n
-          jq: 'select(.level == "INFO")'
+        - name: health_metrics
+          url: http://localhost:8080/api/health
+          custom_attributes:
+            service: enhanced-flex-monitor
+            
+        - name: alert_summary
+          url: http://localhost:8080/api/alerts/summary
+          custom_attributes:
+            service: enhanced-flex-monitor
+            
+        - name: system_stats
+          url: http://localhost:8080/api/system/stats
+          custom_attributes:
+            service: enhanced-flex-monitor
+            
+        - name: performance_summary
+          url: http://localhost:8080/api/performance/summary
+          custom_attributes:
+            service: enhanced-flex-monitor
 ```
 
 ### Data Flow
@@ -100,14 +145,48 @@ integrations:
 
 2. **Configure environment**
    ```bash
-   export NEW_RELIC_API_KEY="your_ingest_license_key"
-   export NEW_RELIC_ACCOUNT_ID="your_account_id"
+   # Copy environment template
+   cp .env.example .env
+   
+   # Edit .env with your New Relic credentials
+   NEW_RELIC_API_KEY="your_ingest_license_key"
+   NEW_RELIC_ACCOUNT_ID="your_account_id"
+   NEW_RELIC_REGION="EU"  # or "US"
    ```
 
 3. **Run the monitor**
    ```bash
    ./enhanced-flex-monitor -config config.yml
    ```
+
+   The application will display a startup banner and begin monitoring:
+   
+   ```
+   ╔═══════════════════════════════════════════════════════════════════╗
+   ║                   🚀 Enhanced Flex Monitor                       ║
+   ║              New Relic Data Staleness Detection                  ║
+   ╚═══════════════════════════════════════════════════════════════════╝
+
+   15:04:05  INFO Starting Enhanced Flex Monitor version=1.0.0 config=config.yml
+   15:04:05  INFO Configuration loaded apis=5 interval=30s region=EU
+   15:04:05  INFO HTTP server will start on port 8080 port=8080
+   15:04:05  INFO Starting API processing cycle api_count=5
+   ```
+
+### Logging Configuration
+
+Enhanced Flex Monitor supports two logging formats:
+
+- **Development (default)**: Pretty colored console output with timestamps
+- **Production**: Structured JSON logging for log aggregation
+
+```bash
+# Pretty console logging (default)
+LOG_FORMAT=text ./enhanced-flex-monitor -config config.yml
+
+# JSON logging for production
+LOG_FORMAT=json ./enhanced-flex-monitor -config config.yml
+```
 
 ## Configuration
 
@@ -118,12 +197,14 @@ global:
   name: "enhanced-flex-monitor"
   interval: 30s
   log_level: "info"
+  enable_metrics: true
+  enable_alerts: true
   worker_count: 4
 
 newrelic:
-  api_key: "${NEW_RELIC_API_KEY}"
-  account_id: "${NEW_RELIC_ACCOUNT_ID}"
-  region: "US"  # or "EU"
+  api_key: "${NEW_RELIC_API_KEY}"        # From .env file
+  account_id: "${NEW_RELIC_ACCOUNT_ID}"  # From .env file  
+  region: "EU"  # or "US"
 
 alerts:
   channels:
@@ -132,14 +213,35 @@ alerts:
       enabled: true
 
 apis:
-  - name: "user-service"
-    url: "https://api.example.com/users"
+  - name: "service-metrics"
+    url: "https://jsonplaceholder.typicode.com/posts/1"
+    fallback_url: "https://httpbin.org/json"
     format: "json"
-    event_type: "UserServiceMetrics"
+    jq: ". | {id, title, userId}"
+    event_type: "ServiceMetrics"
+    enabled: true
+    attributes:
+      service: "example-api"
+      environment: "production"
     staleness:
       enabled: true
-      threshold: "10m"
+      threshold: 5m
       behavior: "alert"  # skip, alert, continue
+```
+
+### Environment Configuration (`.env`)
+
+```bash
+# New Relic Configuration
+NEW_RELIC_API_KEY=eu01xx42e96f7977076b421cf79697a5FFFFNRAL
+NEW_RELIC_ACCOUNT_ID=7124261
+
+# Optional configuration overrides
+LOG_LEVEL=info
+LOG_FORMAT=text    # or "json" for production
+PORT=8080
+WORKER_COUNT=4
+NEW_RELIC_REGION=EU
 ```
 
 ### Staleness Behaviors
@@ -181,12 +283,16 @@ apis:
 
 ### Key Metrics
 
-| Metric | Description | Type |
-|--------|-------------|------|
-| `staleness_check_count` | Total staleness checks performed | Counter |
-| `stale_data_detected` | APIs returning stale data | Gauge |
-| `api_response_time_ms` | API response time in milliseconds | Gauge |
-| `staleness_threshold_ratio` | Data age vs threshold ratio | Gauge |
+| Metric | Description | Type | Endpoint |
+|--------|-------------|------|----------|
+| `staleness_check_count` | Total staleness checks performed | Counter | `/api/staleness/status` |
+| `stale_data_detected` | APIs returning stale data | Gauge | `/api/staleness/status` |
+| `api_response_time_ms` | API response time in milliseconds | Gauge | `/api/health` |
+| `staleness_threshold_ratio` | Data age vs threshold ratio | Gauge | `/api/staleness/status` |
+| `system_cpu_usage` | CPU usage percentage | Gauge | `/api/system/stats` |
+| `system_memory_usage` | Memory usage in MB | Gauge | `/api/system/stats` |
+| `alert_count_total` | Total alerts generated | Counter | `/api/alerts/summary` |
+| `performance_success_rate` | API success rate percentage | Gauge | `/api/performance/summary` |
 
 ### Sample NRQL Queries
 
@@ -243,23 +349,44 @@ make clean
 
 ```yaml
 global:
-  interval: 30s              # Monitoring frequency
-  log_level: "info"          # Logging verbosity
-  worker_count: 4            # Concurrent workers
-  enable_metrics: true       # Metrics collection
-  enable_alerts: true        # Alert generation
+  name: "enhanced-flex-monitor"  # Service name
+  interval: 30s                  # Monitoring frequency
+  log_level: "info"              # Logging verbosity (debug, info, warn, error)
+  worker_count: 4                # Concurrent workers
+  enable_metrics: true           # Metrics collection
+  enable_alerts: true            # Alert generation
 
 newrelic:
-  region: "US"               # US or EU
-  timeout: 30s               # API timeout
+  api_key: "${NEW_RELIC_API_KEY}"     # Ingest license key
+  account_id: "${NEW_RELIC_ACCOUNT_ID}" # Account ID
+  region: "EU"                        # US or EU
   
 alerts:
   channels:
-    - name: "slack-ops"
-      type: "webhook"
+    - name: "log-alerts"
+      type: "log"
       enabled: true
-      settings:
-        webhook_url: "${SLACK_WEBHOOK_URL}"
+
+# Environment variables (in .env file)
+LOG_FORMAT=text              # text (colored) or json (structured)
+PORT=8080                   # HTTP server port
+NEW_RELIC_REGION=EU         # Override config region
+```
+
+### Command Line Options
+
+```bash
+# Basic usage
+./enhanced-flex-monitor -config config.yml
+
+# Override log level
+./enhanced-flex-monitor -config config.yml -log-level debug
+
+# Show version
+./enhanced-flex-monitor -version
+
+# Using environment variables
+PORT=9090 LOG_LEVEL=debug ./enhanced-flex-monitor -config config.yml
 ```
 
 
