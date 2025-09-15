@@ -51,7 +51,6 @@ Enhanced Flex Monitor works in conjunction with New Relic Flex to provide compre
 │ • Data validation   │    │ • Error handling    │    │ • Analytics         │
 └─────────────────────┘    └─────────────────────┘    └─────────────────────┘
 ```
-
 ## HTTP Monitoring Endpoints
 
 Enhanced Flex Monitor provides a built-in HTTP server (port 8080) with comprehensive monitoring endpoints:
@@ -125,6 +124,8 @@ integrations:
 3. **Data transformation** occurs using JQ filters to structure metrics
 4. **New Relic Platform** ingests the processed staleness metrics and logs
 5. **Dashboards and alerts** provide visibility into data freshness status
+
+Note: Enhanced Flex Monitor sits between your data source and New Relic Flex. It validates freshness before Flex ingests anything, acting as an automated “data quality filter.”
 
 ## Quick Start
 
