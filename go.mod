@@ -10,5 +10,6 @@ require (
 
 require (
 	github.com/itchyny/timefmt-go v0.1.5 // indirect
+	github.com/joho/godotenv v1.5.1 // indirect
 	golang.org/x/sys v0.8.0 // indirect
 )

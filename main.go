@@ -10,7 +10,9 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/joho/godotenv"
 	"github.com/satyampsoni/new-relic-hackathon-o11y/internal/alerts"
+	"github.com/satyampsoni/new-relic-hackathon-o11y/internal/api"
 	"github.com/satyampsoni/new-relic-hackathon-o11y/internal/config"
 	"github.com/satyampsoni/new-relic-hackathon-o11y/internal/metrics"
 	"github.com/satyampsoni/new-relic-hackathon-o11y/internal/processor"
@@ -36,6 +38,7 @@ type Application struct {
 	alertManager      *alerts.Manager
 	stalenessDetector *staleness.Detector
 	fileProcessor     *processor.FileProcessor
+	httpServer        *api.Server
 	ctx               context.Context
 	cancel            context.CancelFunc
 	wg                sync.WaitGroup
@@ -54,12 +57,7 @@ func main() {
 		os.Exit(1)
 	}
 
-	app.logger.WithFields(logrus.Fields{
-		"version":  version,
-		"config":   *configPath,
-		"apis":     len(app.config.APIs),
-		"interval": app.config.Global.Interval,
-	}).Info("Starting Enhanced Flex Monitor")
+	app.displayStartupBanner()
 
 	app.setupGracefulShutdown()
 	app.run()
@@ -67,15 +65,34 @@ func main() {
 }
 
 func initializeApplication() (*Application, error) {
+	// Load environment variables from .env file (if it exists)
+	if err := godotenv.Load(); err != nil {
+		// .env file is optional, so we only log a warning if it's missing
+		fmt.Printf("Warning: .env file not found or could not be loaded: %v\n", err)
+	}
+
 	cfg, err := config.LoadConfig(*configPath)
 	if err != nil {
 		return nil, fmt.Errorf("failed to load config: %w", err)
 	}
 
 	logger := logrus.New()
-	logger.SetFormatter(&logrus.JSONFormatter{
-		TimestampFormat: time.RFC3339,
-	})
+	
+	// Use pretty formatting for console output (default) or JSON for production
+	logFormat := os.Getenv("LOG_FORMAT")
+	if logFormat == "json" {
+		logger.SetFormatter(&logrus.JSONFormatter{
+			TimestampFormat: time.RFC3339,
+		})
+	} else {
+		// Pretty text formatter for development
+		logger.SetFormatter(&logrus.TextFormatter{
+			TimestampFormat: "15:04:05",
+			FullTimestamp:   true,
+			ForceColors:     true,
+			DisableQuote:    true,
+		})
+	}
 
 	if *logLevel != "" {
 		cfg.Global.LogLevel = *logLevel
@@ -93,6 +110,16 @@ func initializeApplication() (*Application, error) {
 	stalenessDetector := staleness.NewDetector(logger)
 	fileProcessor := processor.NewFileProcessor(logger, metricsCollector, stalenessDetector)
 
+	// Initialize HTTP server for metrics endpoints
+	port := 8080
+	if portEnv := os.Getenv("PORT"); portEnv != "" {
+		if p, err := fmt.Sscanf(portEnv, "%d", &port); err != nil || p != 1 {
+			logger.WithError(err).Warn("Invalid PORT environment variable, using default 8080")
+			port = 8080
+		}
+	}
+	httpServer := api.NewServer(port, stalenessDetector, alertManager, cfg, logger)
+
 	// Create context for graceful shutdown
 	ctx, cancel := context.WithCancel(context.Background())
 
@@ -103,11 +130,40 @@ func initializeApplication() (*Application, error) {
 		alertManager:      alertManager,
 		stalenessDetector: stalenessDetector,
 		fileProcessor:     fileProcessor,
+		httpServer:        httpServer,
 		ctx:               ctx,
 		cancel:            cancel,
 	}
 
 	return app, nil
+}
+
+// displayStartupBanner shows a nice startup banner and configuration summary
+func (app *Application) displayStartupBanner() {
+	banner := `
+╔═══════════════════════════════════════════════════════════════════╗
+║                   🚀 Enhanced Flex Monitor                       ║
+║              New Relic Data Staleness Detection                  ║
+╚═══════════════════════════════════════════════════════════════════╝`
+	
+	fmt.Println(banner)
+	
+	app.logger.WithFields(logrus.Fields{
+		"version": version,
+		"config":  *configPath,
+	}).Info("Starting Enhanced Flex Monitor")
+	
+	app.logger.WithFields(logrus.Fields{
+		"apis":     len(app.config.APIs),
+		"interval": app.config.Global.Interval,
+		"region":   app.config.NewRelic.Region,
+	}).Info("Configuration loaded")
+	
+	app.logger.WithFields(logrus.Fields{
+		"port": 8080,
+	}).Info("HTTP server will start on port 8080")
+	
+	fmt.Println()
 }
 
 // setupGracefulShutdown configures signal handling for graceful shutdown
@@ -126,6 +182,15 @@ func (app *Application) setupGracefulShutdown() {
 func (app *Application) run() {
 	ticker := time.NewTicker(app.config.Global.Interval)
 	defer ticker.Stop()
+
+	// Start HTTP server for metrics endpoints
+	app.wg.Add(1)
+	go func() {
+		defer app.wg.Done()
+		if err := app.httpServer.Start(); err != nil {
+			app.logger.WithError(err).Error("HTTP server failed to start")
+		}
+	}()
 
 	// Send startup health alert
 	if app.config.Global.EnableAlerts {
@@ -248,6 +313,14 @@ func (app *Application) shutdown() {
 		if err := app.metricsCollector.SendBatch(); err != nil {
 			app.logger.WithError(err).Error("Failed to send final metrics batch")
 		}
+	}
+
+	// Shutdown HTTP server
+	shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer shutdownCancel()
+	
+	if err := app.httpServer.Stop(shutdownCtx); err != nil {
+		app.logger.WithError(err).Error("Failed to shutdown HTTP server gracefully")
 	}
 
 	// Send shutdown alert
