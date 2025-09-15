@@ -221,26 +221,6 @@ Track and report on data freshness SLAs, ensuring upstream services meet contrac
 ### Dependency Monitoring
 Detect when external APIs or services start returning outdated information due to failures.
 
-## Development
-
-### Project Structure
-
-```
-├── main.go                     # Application entry point
-├── config.yml                  # Main configuration
-├── configs/
-│   ├── flex-integration.yml    # New Relic Flex configuration
-│   └── README.md              # Flex setup guide
-├── internal/
-│   ├── config/                # Configuration management
-│   ├── staleness/             # Staleness detection logic
-│   ├── metrics/               # New Relic metrics collection
-│   ├── alerts/                # Alert management
-│   ├── processor/             # Data processing
-│   └── api/                   # HTTP API endpoints
-├── Makefile                   # Build automation
-└── Dockerfile                 # Container support
-```
 
 ### Building
 
