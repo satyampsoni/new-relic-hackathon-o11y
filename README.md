@@ -228,22 +228,6 @@ apis:
       enabled: true
       threshold: 5m
       behavior: "alert"  # skip, alert, continue
-```
-
-### Environment Configuration (`.env`)
-
-```bash
-# New Relic Configuration
-NEW_RELIC_API_KEY=eu01xx42e96f7977076b421cf79697a5FFFFNRAL
-NEW_RELIC_ACCOUNT_ID=7124261
-
-# Optional configuration overrides
-LOG_LEVEL=info
-LOG_FORMAT=text    # or "json" for production
-PORT=8080
-WORKER_COUNT=4
-NEW_RELIC_REGION=EU
-```
 
 ### Staleness Behaviors
 
