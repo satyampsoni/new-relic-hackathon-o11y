@@ -31,7 +31,7 @@ apis:
       team: "platform"
     staleness:
       enabled: true
-      threshold: 5m
+      threshold: 1us
       behavior: "alert"
       check_url: "https://jsonplaceholder.typicode.com/posts/1"
 
@@ -46,7 +46,7 @@ apis:
       format: "json"
     staleness:
       enabled: true
-      threshold: 15m
+      threshold: 2us
       behavior: "alert"
 
   - name: "legacy-system"
@@ -59,7 +59,7 @@ apis:
       criticality: "low"
     staleness:
       enabled: true
-      threshold: 1h
+      threshold: 1us
       behavior: "continue"
 
   - name: "static-config"
@@ -84,6 +84,6 @@ apis:
       transformation: "jq"
     staleness:
       enabled: true
-      threshold: 10m
+      threshold: 10s
       behavior: "alert"
       check_url: "https://jsonplaceholder.typicode.com/posts"

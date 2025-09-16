@@ -37,8 +37,8 @@ type APIStats struct {
 type StalenessMetrics struct {
 	APIName          string    `json:"api_name"`
 	IsStale          bool      `json:"is_stale"`
-	FileAgeMinutes   float64   `json:"file_age_minutes"`
-	ThresholdMinutes float64   `json:"threshold_minutes"`
+	FileAgeSeconds   float64   `json:"file_age_seconds"`
+	ThresholdSeconds float64   `json:"threshold_seconds"`
 	Behavior         string    `json:"behavior"`
 	LastCheck        time.Time `json:"last_check"`
 }
@@ -111,29 +111,48 @@ func (h *MetricsHandler) StalenessStatus(w http.ResponseWriter, r *http.Request)
 
 	var metrics []StalenessMetrics
 
-	// Generate sample data based on your config
+	// Perform real staleness checks for each configured API
 	for _, api := range h.config.APIs {
 		if !api.Enabled || !api.Staleness.Enabled {
 			continue
 		}
 
-		// Simulate staleness check results
-		isStale := false
-		fileAgeMinutes := 2.5 // Sample data
-
-		// Randomly make some APIs stale for demo
-		if api.Name == "complex-data" || api.Name == "performance-data" {
-			isStale = true
-			fileAgeMinutes = api.Staleness.Threshold.Minutes() + 5
+		// Determine which URL to check for staleness
+		checkURL := api.Staleness.CheckURL
+		if checkURL == "" {
+			checkURL = api.URL
 		}
+
+		h.logger.WithFields(logrus.Fields{
+			"api_name":  api.Name,
+			"check_url": checkURL,
+			"threshold": api.Staleness.Threshold,
+			"behavior":  api.Staleness.Behavior,
+		}).Debug("Performing staleness check")
+
+		// Perform actual staleness detection
+		result := h.detector.CheckStaleness(checkURL, api.Staleness.Threshold, api.Staleness.Behavior)
+
+		// Handle errors gracefully - if we can't check, assume not stale but log the error
+		if result.Error != nil {
+			h.logger.WithError(result.Error).WithField("api_name", api.Name).Warn("Failed to check staleness, assuming not stale")
+		}
+
+		// Debug logging to verify real detection is working
+		h.logger.WithFields(logrus.Fields{
+			"api_name":          api.Name,
+			"is_stale":          result.IsStale,
+			"file_age_seconds":  result.FileAge.Seconds(),
+			"threshold_seconds": api.Staleness.Threshold.Seconds(),
+		}).Info("Real staleness detection result")
 
 		metrics = append(metrics, StalenessMetrics{
 			APIName:          api.Name,
-			IsStale:          isStale,
-			FileAgeMinutes:   fileAgeMinutes,
-			ThresholdMinutes: api.Staleness.Threshold.Minutes(),
+			IsStale:          result.IsStale,
+			FileAgeSeconds:   result.FileAge.Seconds(),
+			ThresholdSeconds: api.Staleness.Threshold.Seconds(),
 			Behavior:         api.Staleness.Behavior,
-			LastCheck:        time.Now().Add(-time.Duration(fileAgeMinutes) * time.Minute),
+			LastCheck:        time.Now(),
 		})
 	}
 
